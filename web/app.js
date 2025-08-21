@@ -77,9 +77,13 @@
   function buildConversationFromSession(session) {
     const traces = Array.isArray(session?.traces) ? session.traces.slice() : [];
     if (!traces.length) return [];
-    // Pick the latest trace as the canonical conversation to avoid duplicates across traces
-    traces.sort((a, b) => new Date(a.updatedAt || a.timestamp || a.createdAt || 0) - new Date(b.updatedAt || b.timestamp || b.createdAt || 0));
-    const t = traces[traces.length - 1];
+    // Prefer the most recent trace that actually has output messages; otherwise fall back to latest
+    const byTimeDesc = (a, b) => new Date(b.updatedAt || b.timestamp || b.createdAt || 0) - new Date(a.updatedAt || a.timestamp || a.createdAt || 0);
+    traces.sort(byTimeDesc);
+    const pickWithOutput = traces.find(tt => Array.isArray(tt.output?.messages) && tt.output.messages.length)
+      || traces.find(tt => Array.isArray(tt.output?.tool_calls) && tt.output.tool_calls.length)
+      || traces[0];
+    const t = pickWithOutput;
 
     const turns = [];
     const seenToolCalls = new Set();
@@ -156,6 +160,17 @@
     if (Array.isArray(t.output?.tool_calls) && t.output.tool_calls.length) {
       const extra = normalizeToolCalls(t.output.tool_calls, meta, seenToolCalls);
       for (const tt of extra) turns.push(tt);
+    }
+
+    // Fallback: if we parsed nothing from output, at least render input messages (user side)
+    if (!turns.length) {
+      const inMsgs = Array.isArray(t.input?.messages) ? t.input.messages : Array.isArray(t.input) ? t.input : [];
+      for (const m of inMsgs) {
+        const content = pickContent(m);
+        if (!content) continue;
+        const key = messageKey({ role: 'user', content }, 'user');
+        pushTurn({ role: 'user', content, meta }, key);
+      }
     }
 
     // Compact adjacent identical bubbles
@@ -286,7 +301,7 @@
   };
 
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   loadBtn.onclick = () => load();
@@ -310,7 +325,7 @@
 
   // Initial load
   load();
-  
+
   function parseJsonIfLikely(text) {
     const s = String(text || '').trim();
     if (!s) return null;
