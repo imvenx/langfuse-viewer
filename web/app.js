@@ -86,9 +86,24 @@
 
     const meta = { traceId: t.id, name: t.name, timestamp: t.timestamp || t.createdAt, provider: t.metadata?.ls_provider, model: t.metadata?.ls_model_name, raw: t };
 
-    // Build a set of known user inputs from this trace
-    const inMsgs = Array.isArray(t.input?.messages) ? t.input.messages : [];
-    const userInputs = new Set(inMsgs.map((m) => pickContent(m)).filter(Boolean));
+    // Build a set of known user inputs from ALL traces to better classify short messages like "asd"
+    const userCorpus = new Set();
+    for (const tr of traces) {
+      // LangGraph style
+      const im = tr?.input?.messages;
+      if (Array.isArray(im)) {
+        for (const m of im) {
+          const c = pickContent(m);
+          if (c) userCorpus.add(normalizeText(c));
+        }
+      }
+      // ChatOpenAI style
+      if (Array.isArray(tr?.input)) {
+        for (const m of tr.input) {
+          if ((m?.role === 'user' || !m?.role) && m?.content) userCorpus.add(normalizeText(m.content));
+        }
+      }
+    }
 
     function messageKey(m, fallbackRole) {
       const role = m?.role || fallbackRole || 'assistant';
@@ -129,7 +144,7 @@
 
       // Regular user or assistant message
       if (content) {
-        const role = userInputs.has(content) ? 'user' : 'assistant';
+        const role = userCorpus.has(normalizeText(content)) ? 'user' : (m.role || 'assistant');
         const key = messageKey({ role, content }, role);
         pushTurn({ role, content, meta }, key);
         continue;
