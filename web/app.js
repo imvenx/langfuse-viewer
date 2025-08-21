@@ -78,6 +78,8 @@
     // Sort chronologically by timestamp/createdAt
     traces.sort((a, b) => new Date(a.timestamp || a.createdAt || 0) - new Date(b.timestamp || b.createdAt || 0));
     const turns = [];
+    const seenToolCalls = new Set();
+    const seenToolMsgs = new Set();
 
     for (const t of traces) {
       const meta = { traceId: t.id, name: t.name, timestamp: t.timestamp || t.createdAt, provider: t.metadata?.ls_provider, model: t.metadata?.ls_model_name, raw: t };
@@ -86,9 +88,15 @@
       if (Array.isArray(t.input) && t.output && typeof t.output === 'object') {
         const lastUser = [...t.input].reverse().find(m => m && (m.role === 'user' || !m.role));
         if (lastUser?.content) turns.push({ role: lastUser.role || 'user', content: lastUser.content, meta });
-        if (t.output?.content) {
+        if (t.output?.content || t.output?.tool_calls || t.output?.toolCalls) {
           const tc = t.output?.tool_calls || t.output?.toolCalls || undefined;
-          turns.push({ role: t.output.role || 'assistant', content: t.output.content, toolCalls: tc, usage: t.metadata?.usage, meta });
+          // Assistant message
+          if (t.output?.content) {
+            turns.push({ role: t.output.role || 'assistant', content: t.output.content, meta });
+          }
+          // Inline tool calls between assistant and next messages
+          const toolTurns = normalizeToolCalls(tc, meta);
+          for (const tt of toolTurns) turns.push(tt);
         }
         continue;
       }
@@ -102,10 +110,31 @@
 
         // Take only the last assistant answer to avoid giant repeats
         const lastAssistant = Array.isArray(outMsgs) && outMsgs.length ? outMsgs[outMsgs.length - 1] : null;
-        if (lastAssistant?.content) {
-          const toolCalls = lastAssistant.tool_calls || lastAssistant.toolCalls || lastAssistant.lc_kwargs?.tool_calls;
-          const usage = lastAssistant.usage_metadata || lastAssistant.lc_kwargs?.usage_metadata || t.metadata?.usage;
-          turns.push({ role: 'assistant', content: pickContent(lastAssistant), toolCalls, usage, meta });
+        if (lastAssistant?.content || lastAssistant?.tool_calls || lastAssistant?.toolCalls || lastAssistant?.lc_kwargs?.tool_calls) {
+          const usage = lastAssistant?.usage_metadata || lastAssistant?.lc_kwargs?.usage_metadata || t.metadata?.usage;
+          // Assistant message first
+          if (lastAssistant?.content) turns.push({ role: 'assistant', content: pickContent(lastAssistant), usage, meta });
+        }
+
+        // Collect all tool calls present anywhere in outMsgs and add unseen ones inline
+        if (Array.isArray(outMsgs)) {
+          const allToolCalls = [];
+          for (const m of outMsgs) {
+            const toolCalls = extractToolCalls(m);
+            if (toolCalls?.length) allToolCalls.push(...toolCalls);
+          }
+          const toolTurns = normalizeToolCalls(allToolCalls, meta, seenToolCalls);
+          for (const tt of toolTurns) turns.push(tt);
+
+          // Also render explicit tool role messages as results if unseen
+          for (const m of outMsgs) {
+            if (m?.role === 'tool' && m?.content) {
+              const key = m.id || JSON.stringify({ c: m.content, n: m.name });
+              if (seenToolMsgs.has(key)) continue;
+              seenToolMsgs.add(key);
+              turns.push({ role: 'tool', content: pickContent(m), toolCall: { name: m.name || 'tool_result' }, meta });
+            }
+          }
         }
         continue;
       }
@@ -125,6 +154,39 @@
       compact.push(m);
     }
     return compact;
+  }
+
+  function normalizeToolCalls(toolCalls, meta, seen = new Set()) {
+    const out = [];
+    if (!Array.isArray(toolCalls) || !toolCalls.length) return out;
+    for (const call of toolCalls) {
+      // OpenAI function tool call shape
+      const name = call.function?.name || call.name || call.tool_name || 'tool';
+      let args = call.function?.arguments ?? call.arguments ?? call.input ?? call.params ?? '';
+      const id = call.id || call.tool_call_id || call.function?.name + ':' + (typeof args === 'string' ? args : JSON.stringify(args));
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      if (typeof args !== 'string') args = JSON.stringify(args, null, 2);
+      // Try to surface result if embedded (not common)
+      const result = call.result ?? call.output ?? call.response;
+      let preview = args;
+      if (preview.length > 400) preview = preview.slice(0, 397) + '...';
+      const content = result ? `${name}(${preview})\n→ ${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200)}` : `${name}(${preview})`;
+      out.push({ role: 'tool', content, toolCall: call, meta });
+    }
+    return out;
+  }
+
+  function extractToolCalls(msg) {
+    if (!msg || typeof msg !== 'object') return [];
+    const arr = [];
+    const pushAll = (v) => { if (Array.isArray(v)) arr.push(...v); };
+    pushAll(msg.tool_calls);
+    pushAll(msg.toolCalls);
+    pushAll(msg.additional_kwargs?.tool_calls);
+    pushAll(msg.response_metadata?.tool_calls);
+    pushAll(msg.lc_kwargs?.tool_calls);
+    return arr;
   }
 
   function pickContent(msg) {
@@ -152,7 +214,7 @@
       const meta = document.createElement('div');
       meta.className = 'meta';
       const stamp = t.meta?.timestamp ? new Date(t.meta.timestamp).toLocaleString() : '';
-      const model = t.meta?.model || t.meta?.name || '';
+      const model = t.role === 'tool' ? (t.toolCall?.function?.name || t.toolCall?.name || 'tool') : (t.meta?.model || t.meta?.name || '');
       meta.textContent = [t.role.toUpperCase(), model, stamp].filter(Boolean).join(' • ');
 
       const bubble = document.createElement('div');
@@ -162,7 +224,7 @@
       wrap.appendChild(meta);
       wrap.appendChild(bubble);
 
-      if (t.toolCalls || t.usage || t.meta) {
+      if (t.toolCalls || t.toolCall || t.usage || t.meta) {
         const det = document.createElement('details');
         det.className = 'tools';
         const sum = document.createElement('summary');
@@ -170,7 +232,7 @@
         det.appendChild(sum);
         const pre = document.createElement('pre');
         pre.className = 'code';
-        const payload = { tool_calls: t.toolCalls, usage: t.usage, meta: { model: t.meta?.model, provider: t.meta?.provider, traceId: t.meta?.traceId, name: t.meta?.name, timestamp: t.meta?.timestamp } };
+        const payload = { tool_call: t.toolCall, tool_calls: t.toolCalls, usage: t.usage, meta: { model: t.meta?.model, provider: t.meta?.provider, traceId: t.meta?.traceId, name: t.meta?.name, timestamp: t.meta?.timestamp } };
         pre.textContent = JSON.stringify(payload, null, 2);
         det.appendChild(pre);
         wrap.appendChild(det);

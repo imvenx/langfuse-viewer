@@ -60,6 +60,8 @@ footer { border-top: 1px solid var(--border); padding: 8px 16px; color: var(--mu
 .msg.user .bubble { background: #101821; border-color: #243040; }
 .msg.assistant { align-self: flex-end; }
 .msg.assistant .bubble { background: #0f1a12; border-color: #244032; }
+.msg.tool { align-self: center; }
+.msg.tool .bubble { background: #0f1420; border-color: #2a3a52; }
 .msg .tools { margin-top: 6px; }
 .msg details { background: transparent; border: 1px dashed var(--border); border-radius: 8px; padding: 6px 8px; }
 .msg details > summary { cursor: pointer; color: var(--muted); }
