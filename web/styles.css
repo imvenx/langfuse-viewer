@@ -31,7 +31,7 @@ button { background: var(--accent); color: #08110a; border: none; padding: 6px 1
 button#prev, button#next { background: #2f81f7; color: #081326; }
 button:disabled { opacity: .6; cursor: not-allowed; }
 
-main { display: grid; grid-template-columns: 2fr 1fr; gap: 0; height: calc(100% - 64px); }
+main { display: grid; grid-template-columns: 1fr 2fr; gap: 0; height: calc(100% - 64px); }
 .list { padding: 12px 16px; overflow: auto; }
 .details { padding: 12px 16px; border-left: 1px solid var(--border); background: var(--surface); overflow: auto; }
 table { width: 100%; border-collapse: collapse; background: var(--table); }
@@ -46,6 +46,10 @@ footer { border-top: 1px solid var(--border); padding: 8px 16px; color: var(--mu
   main { grid-template-columns: 1fr; }
   .details { border-left: none; border-top: 1px solid var(--border); }
 }
+
+/* Focus layout toggles */
+body.focus-chat main { grid-template-columns: 0 1fr; }
+body.focus-chat .list { display: none; }
 
 /* Chat viewer */
 .details-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
