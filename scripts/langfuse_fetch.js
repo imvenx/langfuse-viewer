@@ -12,6 +12,8 @@
  * Examples:
  *   LANGFUSE_PUBLIC_KEY=pk LANGFUSE_SECRET_KEY=sk node scripts/langfuse_fetch.js
  *   LANGFUSE_PUBLIC_KEY=pk LANGFUSE_SECRET_KEY=sk node scripts/langfuse_fetch.js --resource traces --limit 25
+ *   LANGFUSE_PUBLIC_KEY=pk LANGFUSE_SECRET_KEY=sk node scripts/langfuse_fetch.js --format table
+ *   LANGFUSE_PUBLIC_KEY=pk LANGFUSE_SECRET_KEY=sk node scripts/langfuse_fetch.js --resource sessions --id 123 --format table
  */
 
 const { argv } = process;
@@ -85,6 +87,7 @@ async function main() {
   const resource = (args.resource || process.env.LANGFUSE_RESOURCE || "sessions").toString();
   const limit = Number(args.limit || process.env.LANGFUSE_LIMIT || 50);
   const page = Number(args.page || process.env.LANGFUSE_PAGE || 1);
+  const id = args.id || undefined;
 
   // Additional query params via JSON string
   let extra = {};
@@ -103,7 +106,8 @@ async function main() {
     params.set(k, String(v));
   }
 
-  const url = `${baseUrl.replace(/\/$/, "")}/api/public/${resource}?${params.toString()}`;
+  const pathSuffix = id ? `${resource}/${encodeURIComponent(id)}` : resource;
+  const url = `${baseUrl.replace(/\/$/, "")}/api/public/${pathSuffix}?${params.toString()}`;
 
   const auth = Buffer.from(`${publicKey}:${secretKey}`, "utf8").toString("base64");
 
@@ -135,16 +139,21 @@ async function main() {
   }
 
   // Pretty-print with small summary
-  console.error(`Fetched ${resource} OK in ${elapsed}ms`);
+  console.error(`Fetched ${id ? `${resource}/${id}` : resource} OK in ${elapsed}ms`);
   if (Array.isArray(body?.data)) {
     console.error(`Items: ${body.data.length}${body.total ? ` / total ${body.total}` : ""}`);
   }
 
-  try {
-    const out = body ?? JSON.parse(bodyText);
-    console.log(JSON.stringify(out, null, 2));
-  } catch {
-    console.log(bodyText);
+  const format = (args.format || '').toString();
+  if (format.toLowerCase() === 'table') {
+    printAsTable(body ?? JSON.parse(bodyText), { columns: (args.columns || '').split(',').filter(Boolean) });
+  } else {
+    try {
+      const out = body ?? JSON.parse(bodyText);
+      console.log(JSON.stringify(out, null, 2));
+    } catch {
+      console.log(bodyText);
+    }
   }
 }
 
@@ -152,3 +161,57 @@ main().catch((err) => {
   console.error("Unexpected error:", err);
   process.exit(1);
 });
+
+function printAsTable(payload, opts = {}) {
+  const columns = Array.isArray(opts.columns) && opts.columns.length
+    ? opts.columns
+    : inferColumns(payload);
+
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+      ? payload
+      : payload ? [payload] : [];
+
+  const stringRows = rows.map((r) => columns.map((c) => stringify(getProp(r, c))));
+  const header = columns;
+  const allRows = [header, ...stringRows];
+  const widths = columns.map((_, i) => Math.min(40, Math.max(...allRows.map(row => (row[i]?.length || 0)), columns[i].length)));
+
+  const line = (row) => row.map((cell, i) => pad(cell, widths[i])).join('  ');
+  console.log(line(header));
+  console.log(widths.map(w => '-'.repeat(w)).join('  '));
+  for (const row of stringRows) console.log(line(row));
+}
+
+function inferColumns(payload) {
+  const sample = Array.isArray(payload?.data) ? payload.data[0] : Array.isArray(payload) ? payload[0] : payload || {};
+  const preferred = ['id', 'name', 'sessionId', 'traceId', 'environment', 'createdAt', 'updatedAt'];
+  const keys = Object.keys(sample || {});
+  const cols = preferred.filter(k => keys.includes(k));
+  if (cols.length) return cols;
+  return keys.slice(0, 6);
+}
+
+function getProp(obj, path) {
+  if (!path) return undefined;
+  return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), obj);
+}
+
+function stringify(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'object') {
+    // Encode short JSON for objects/arrays
+    const s = JSON.stringify(v);
+    return s.length > 80 ? s.slice(0, 77) + '...' : s;
+  }
+  return String(v);
+}
+
+function pad(s, width) {
+  s = s || '';
+  if (s.length >= width) return s.slice(0, width);
+  return s + ' '.repeat(width - s.length);
+}

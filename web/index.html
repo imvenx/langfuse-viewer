@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Langfuse Session Viewer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Langfuse Sessions</h1>
+      <div class="controls">
+        <label>Limit <input type="number" id="limit" min="1" max="200" value="50" /></label>
+        <label>Page <input type="number" id="page" min="1" value="1" /></label>
+        <button id="load">Load</button>
+        <button id="prev">Prev</button>
+        <button id="next">Next</button>
+      </div>
+    </header>
+    <main>
+      <section class="list">
+        <div id="summary" class="summary"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>createdAt</th>
+              <th>environment</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+      <aside class="details">
+        <h2>Details</h2>
+        <pre id="details">Select a session…</pre>
+      </aside>
+    </main>
+    <footer>
+      <small>Local UI proxying Langfuse Public API. Keys stay server-side.</small>
+    </footer>
+    <script src="/app.js"></script>
+  </body>
+  </html>
+

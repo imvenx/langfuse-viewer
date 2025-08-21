@@ -41,3 +41,24 @@ The script prints a short status line to stderr and the full JSON response to st
 - Copy `.env.example` to `.env` and fill in values:
   - `cp .env.example .env` then edit.
 - The script auto-loads `.env` from the current working directory and only sets variables that are not already defined in the environment.
+
+**Table Format & Single Fetch**
+
+- Pretty table output:
+  - `node scripts/langfuse_fetch.js --format table`
+- Specify columns (comma-separated):
+  - `node scripts/langfuse_fetch.js --format table --columns id,createdAt,environment`
+- Fetch a single resource by id (e.g., one session):
+  - `node scripts/langfuse_fetch.js --resource sessions --id 7705232444_1755775876704 --format table`
+
+**Web UI**
+
+- Start the local UI server (no deps):
+  - `node server.js`
+- Open: `http://localhost:5173`
+- Features:
+  - List sessions in a table with pagination controls.
+  - Click a row to view full JSON details in the side panel.
+- Notes:
+  - The server proxies `/api/sessions` to Langfuse using your `.env` keys.
+  - Keys never reach the browser; they stay on the server.
