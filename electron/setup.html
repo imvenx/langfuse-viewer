@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Setup Langfuse Keys</title>
+    <style>
+      :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#9fb1c1; --accent:#3fb950; --border:#243040; }
+      html, body { height:100%; }
+      body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial; background:var(--bg); color:var(--fg); display:flex; align-items:center; justify-content:center; }
+      .card { width: 460px; background:#11161d; border:1px solid var(--border); border-radius:10px; padding:16px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+      h1 { margin:0 0 8px; font-size:16px; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      label { display:block; margin-top:10px; color: var(--muted); }
+      input { width:100%; margin-top:6px; padding:8px; border-radius:6px; border:1px solid var(--border); background:#0e141b; color:var(--fg); }
+      .actions { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
+      button { background: var(--accent); color:#08110a; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; }
+      .error { color:#ffb4b4; margin-top:8px; min-height:1.2em; }
+      small { color: var(--muted); display:block; margin-top:8px; }
+      a { color:#2f81f7; text-decoration:none; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Connect to Langfuse</h1>
+      <p>Enter your Langfuse Public and Secret keys. They are stored securely in your OS keychain and never exposed to the browser.</p>
+      <form id="f">
+        <label>Public Key
+          <input id="pub" type="text" autocomplete="off" placeholder="LANGFUSE_PUBLIC_KEY" />
+        </label>
+        <label>Secret Key
+          <input id="sec" type="password" autocomplete="off" placeholder="LANGFUSE_SECRET_KEY" />
+        </label>
+        <div class="actions">
+          <button type="submit">Save</button>
+        </div>
+        <div id="err" class="error"></div>
+        <small>Keys are stored using your system keychain (via keytar).</small>
+      </form>
+    </div>
+    <script src="setup.js"></script>
+  </body>
+  </html>
+

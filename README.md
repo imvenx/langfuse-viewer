@@ -73,6 +73,11 @@ The script prints a short status line to stderr and the full JSON response to st
   - `npm run build:desktop`
 
 Notes
+- First run shows a secure key setup window. Keys are stored locally in the app data directory and never exposed to the browser/renderer.
 - Desktop uses `electron/main.js` to start `server.js` in-process and opens a window at `http://localhost:PORT` (default 5173).
 - Secrets stay in the main/server process; the renderer window has `nodeIntegration: false` and `contextIsolation: true`.
-- The app reads `.env` from the current working directory in dev. For packaged apps, prefer configuring env in the OS or place `.env` in the working directory you launch from.
+- The app reads `.env` from the current working directory in dev. If present, `.env` takes precedence over stored values (useful for local testing).
+- You can open the key setup anytime from the main UI using the `Set Keys` button in the header (desktop only). The app restarts to apply changes.
+
+Key storage
+- Stored at `userData/credentials.json` with file mode 0600 (owner-only). On macOS/Windows/Linux this path is per-user and isolated from the app’s web content.

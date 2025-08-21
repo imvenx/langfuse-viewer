@@ -9,9 +9,9 @@
     "dev:desktop": "ELECTRON_DEVTOOLS=1 electron .",
     "build:desktop": "electron-builder"
   },
+  "dependencies": {},
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   }
 }
-

@@ -33,8 +33,6 @@ const { URL } = require('url');
 
 const PORT = Number(process.env.PORT || 5173);
 const BASE_URL = (process.env.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com').replace(/\/$/, '');
-const PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
-const SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
 
 function requireEnv(name, val) {
   if (!val) {
@@ -43,8 +41,8 @@ function requireEnv(name, val) {
   }
   return val;
 }
-requireEnv('LANGFUSE_PUBLIC_KEY', PUBLIC_KEY);
-requireEnv('LANGFUSE_SECRET_KEY', SECRET_KEY);
+requireEnv('LANGFUSE_PUBLIC_KEY', process.env.LANGFUSE_PUBLIC_KEY);
+requireEnv('LANGFUSE_SECRET_KEY', process.env.LANGFUSE_SECRET_KEY);
 
 const WEB_DIR = path.join(process.cwd(), 'web');
 const MIME = {
@@ -81,7 +79,9 @@ function serveStatic(req, res) {
 }
 
 function basicAuthHeader() {
-  const token = Buffer.from(`${PUBLIC_KEY}:${SECRET_KEY}`, 'utf8').toString('base64');
+  const pk = process.env.LANGFUSE_PUBLIC_KEY || '';
+  const sk = process.env.LANGFUSE_SECRET_KEY || '';
+  const token = Buffer.from(`${pk}:${sk}`, 'utf8').toString('base64');
   return `Basic ${token}`;
 }
 
@@ -153,4 +153,3 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Langfuse Viewer running on http://localhost:${PORT}`);
 });
-

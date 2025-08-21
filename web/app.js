@@ -10,6 +10,7 @@
   const loadBtn = qs('#load');
   const prevBtn = qs('#prev');
   const nextBtn = qs('#next');
+  const setKeysBtn = qs('#set-keys');
 
   let state = { page: 1, limit: 50, totalPages: 1 };
 
@@ -291,6 +292,20 @@
   loadBtn.onclick = () => load();
   prevBtn.onclick = () => { if (state.page > 1) { setState({ page: state.page - 1 }); load(); } };
   nextBtn.onclick = () => { if (state.page < state.totalPages) { setState({ page: state.page + 1 }); load(); } };
+
+  // Show Set Keys button if running in desktop (Electron) with bridge
+  if (window.appBridge && typeof window.appBridge.openSetup === 'function') {
+    setKeysBtn.style.display = '';
+    setKeysBtn.onclick = () => {
+      window.appBridge.openSetup();
+    };
+    if (typeof window.appBridge.onKeysUpdated === 'function') {
+      window.appBridge.onKeysUpdated(() => {
+        // Re-load current page of sessions after keys update
+        load();
+      });
+    }
+  }
 
 
   // Initial load
