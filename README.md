@@ -62,3 +62,17 @@ The script prints a short status line to stderr and the full JSON response to st
 - Notes:
   - The server proxies `/api/sessions` to Langfuse using your `.env` keys.
   - Keys never reach the browser; they stay on the server.
+
+**Desktop App (Electron)**
+
+- Prereq: Node 18+. Install dev deps:
+  - `npm install`
+- Run desktop in dev (wraps the same server and UI):
+  - `npm run dev:desktop`
+- Build installers (optional):
+  - `npm run build:desktop`
+
+Notes
+- Desktop uses `electron/main.js` to start `server.js` in-process and opens a window at `http://localhost:PORT` (default 5173).
+- Secrets stay in the main/server process; the renderer window has `nodeIntegration: false` and `contextIsolation: true`.
+- The app reads `.env` from the current working directory in dev. For packaged apps, prefer configuring env in the OS or place `.env` in the working directory you launch from.

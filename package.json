@@ -1,0 +1,17 @@
+{
+  "name": "langfuse-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Langfuse session viewer (CLI + web UI + desktop wrapper)",
+  "main": "electron/main.js",
+  "scripts": {
+    "start:web": "node server.js",
+    "dev:desktop": "ELECTRON_DEVTOOLS=1 electron .",
+    "build:desktop": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
+
