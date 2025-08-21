@@ -47,3 +47,23 @@ footer { border-top: 1px solid var(--border); padding: 8px 16px; color: var(--mu
   .details { border-left: none; border-top: 1px solid var(--border); }
 }
 
+/* Chat viewer */
+.details-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.details-header h2 { margin: 0; font-size: 15px; }
+.details-actions { display: flex; gap: 8px; }
+
+.chat { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 16px; }
+.msg { display: grid; grid-template-columns: 1fr; gap: 6px; max-width: 900px; }
+.msg .meta { color: var(--muted); font-size: 12px; }
+.msg .bubble { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #0e141b; }
+.msg.user { align-self: flex-start; }
+.msg.user .bubble { background: #101821; border-color: #243040; }
+.msg.assistant { align-self: flex-end; }
+.msg.assistant .bubble { background: #0f1a12; border-color: #244032; }
+.msg .tools { margin-top: 6px; }
+.msg details { background: transparent; border: 1px dashed var(--border); border-radius: 8px; padding: 6px 8px; }
+.msg details > summary { cursor: pointer; color: var(--muted); }
+.raw { margin-top: 12px; }
+.raw > summary { cursor: pointer; color: var(--muted); }
+
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.5; }

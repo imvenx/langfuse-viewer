@@ -4,6 +4,8 @@
   const pageEl = qs('#page');
   const rowsEl = qs('#rows');
   const detailsEl = qs('#details');
+  const chatEl = qs('#chat');
+  const toggleRawBtn = qs('#toggle-raw');
   const summaryEl = qs('#summary');
   const loadBtn = qs('#load');
   const prevBtn = qs('#prev');
@@ -55,14 +57,133 @@
   }
 
   async function loadDetails(id) {
-    detailsEl.textContent = 'Loading details…';
+    qs('#details-title').textContent = `Session: ${id}`;
+    chatEl.textContent = 'Loading conversation…';
+    detailsEl.textContent = 'Loading JSON…';
     try {
       const data = await fetchJSON(`/api/sessions/${encodeURIComponent(id)}`);
+      // Raw JSON
       detailsEl.textContent = JSON.stringify(data, null, 2);
+      // Render chat transcript
+      const convo = buildConversationFromSession(data);
+      renderChat(convo);
     } catch (e) {
-      detailsEl.textContent = 'Failed to load details.';
+      chatEl.textContent = 'Failed to load details.';
+      detailsEl.textContent = 'Failed to load JSON.';
     }
   }
+
+  function buildConversationFromSession(session) {
+    const traces = Array.isArray(session?.traces) ? session.traces.slice() : [];
+    // Sort chronologically by timestamp/createdAt
+    traces.sort((a, b) => new Date(a.timestamp || a.createdAt || 0) - new Date(b.timestamp || b.createdAt || 0));
+    const turns = [];
+
+    for (const t of traces) {
+      const meta = { traceId: t.id, name: t.name, timestamp: t.timestamp || t.createdAt, provider: t.metadata?.ls_provider, model: t.metadata?.ls_model_name, raw: t };
+
+      // Case 1: ChatOpenAI style: input: [{role, content}], output: {role, content}
+      if (Array.isArray(t.input) && t.output && typeof t.output === 'object') {
+        const lastUser = [...t.input].reverse().find(m => m && (m.role === 'user' || !m.role));
+        if (lastUser?.content) turns.push({ role: lastUser.role || 'user', content: lastUser.content, meta });
+        if (t.output?.content) {
+          const tc = t.output?.tool_calls || t.output?.toolCalls || undefined;
+          turns.push({ role: t.output.role || 'assistant', content: t.output.content, toolCalls: tc, usage: t.metadata?.usage, meta });
+        }
+        continue;
+      }
+
+      // Case 2: LangGraph style: input.messages[], output.messages[]
+      const inMsgs = t.input?.messages;
+      const outMsgs = t.output?.messages;
+      if (Array.isArray(inMsgs) || Array.isArray(outMsgs)) {
+        const lastUser = Array.isArray(inMsgs) && inMsgs.length ? inMsgs[inMsgs.length - 1] : null;
+        if (lastUser?.content) turns.push({ role: 'user', content: pickContent(lastUser), meta });
+
+        // Take only the last assistant answer to avoid giant repeats
+        const lastAssistant = Array.isArray(outMsgs) && outMsgs.length ? outMsgs[outMsgs.length - 1] : null;
+        if (lastAssistant?.content) {
+          const toolCalls = lastAssistant.tool_calls || lastAssistant.toolCalls || lastAssistant.lc_kwargs?.tool_calls;
+          const usage = lastAssistant.usage_metadata || lastAssistant.lc_kwargs?.usage_metadata || t.metadata?.usage;
+          turns.push({ role: 'assistant', content: pickContent(lastAssistant), toolCalls, usage, meta });
+        }
+        continue;
+      }
+
+      // Fallback: try generic input/output strings
+      const inputStr = typeof t.input === 'string' ? t.input : undefined;
+      if (inputStr) turns.push({ role: 'user', content: inputStr, meta });
+      const outputStr = typeof t.output === 'string' ? t.output : undefined;
+      if (outputStr) turns.push({ role: 'assistant', content: outputStr, meta });
+    }
+
+    // Compact repeated adjacent content from same role (common with frameworks)
+    const compact = [];
+    for (const m of turns) {
+      const prev = compact[compact.length - 1];
+      if (prev && prev.role === m.role && prev.content === m.content) continue;
+      compact.push(m);
+    }
+    return compact;
+  }
+
+  function pickContent(msg) {
+    if (!msg) return '';
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) {
+      // Some providers use array content (e.g., tool + text). Join text parts.
+      return msg.content.map(part => typeof part === 'string' ? part : part?.text || part?.content || '').filter(Boolean).join('\n');
+    }
+    // LangChain lc_kwargs.content fallback
+    if (msg.lc_kwargs && typeof msg.lc_kwargs.content === 'string') return msg.lc_kwargs.content;
+    return JSON.stringify(msg);
+  }
+
+  function renderChat(turns) {
+    chatEl.innerHTML = '';
+    if (!turns.length) {
+      chatEl.textContent = 'No conversation turns parsed.';
+      return;
+    }
+    for (const t of turns) {
+      const wrap = document.createElement('div');
+      wrap.className = `msg ${t.role}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const stamp = t.meta?.timestamp ? new Date(t.meta.timestamp).toLocaleString() : '';
+      const model = t.meta?.model || t.meta?.name || '';
+      meta.textContent = [t.role.toUpperCase(), model, stamp].filter(Boolean).join(' • ');
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = t.content;
+
+      wrap.appendChild(meta);
+      wrap.appendChild(bubble);
+
+      if (t.toolCalls || t.usage || t.meta) {
+        const det = document.createElement('details');
+        det.className = 'tools';
+        const sum = document.createElement('summary');
+        sum.textContent = 'Details';
+        det.appendChild(sum);
+        const pre = document.createElement('pre');
+        pre.className = 'code';
+        const payload = { tool_calls: t.toolCalls, usage: t.usage, meta: { model: t.meta?.model, provider: t.meta?.provider, traceId: t.meta?.traceId, name: t.meta?.name, timestamp: t.meta?.timestamp } };
+        pre.textContent = JSON.stringify(payload, null, 2);
+        det.appendChild(pre);
+        wrap.appendChild(det);
+      }
+
+      chatEl.appendChild(wrap);
+    }
+  }
+
+  toggleRawBtn.onclick = () => {
+    const d = document.querySelector('details.raw');
+    d.open = !d.open;
+  };
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -75,4 +196,3 @@
   // Initial load
   load();
 })();
-

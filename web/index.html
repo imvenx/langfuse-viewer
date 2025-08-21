@@ -32,8 +32,17 @@
         </table>
       </section>
       <aside class="details">
-        <h2>Details</h2>
-        <pre id="details">Select a session…</pre>
+        <div class="details-header">
+          <h2 id="details-title">Details</h2>
+          <div class="details-actions">
+            <button id="toggle-raw">Raw JSON</button>
+          </div>
+        </div>
+        <div id="chat" class="chat">Select a session…</div>
+        <details class="raw">
+          <summary>Session JSON</summary>
+          <pre id="details"></pre>
+        </details>
       </aside>
     </main>
     <footer>
@@ -42,4 +51,3 @@
     <script src="/app.js"></script>
   </body>
   </html>
-
