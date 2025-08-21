@@ -75,78 +75,74 @@
 
   function buildConversationFromSession(session) {
     const traces = Array.isArray(session?.traces) ? session.traces.slice() : [];
-    // Sort chronologically by timestamp/createdAt
-    traces.sort((a, b) => new Date(a.timestamp || a.createdAt || 0) - new Date(b.timestamp || b.createdAt || 0));
+    if (!traces.length) return [];
+    // Pick the latest trace as the canonical conversation to avoid duplicates across traces
+    traces.sort((a, b) => new Date(a.updatedAt || a.timestamp || a.createdAt || 0) - new Date(b.updatedAt || b.timestamp || b.createdAt || 0));
+    const t = traces[traces.length - 1];
+
     const turns = [];
     const seenToolCalls = new Set();
-    const seenToolMsgs = new Set();
+    const seenMessages = new Set();
 
-    for (const t of traces) {
-      const meta = { traceId: t.id, name: t.name, timestamp: t.timestamp || t.createdAt, provider: t.metadata?.ls_provider, model: t.metadata?.ls_model_name, raw: t };
+    const meta = { traceId: t.id, name: t.name, timestamp: t.timestamp || t.createdAt, provider: t.metadata?.ls_provider, model: t.metadata?.ls_model_name, raw: t };
 
-      // Case 1: ChatOpenAI style: input: [{role, content}], output: {role, content}
-      if (Array.isArray(t.input) && t.output && typeof t.output === 'object') {
-        const lastUser = [...t.input].reverse().find(m => m && (m.role === 'user' || !m.role));
-        if (lastUser?.content) turns.push({ role: lastUser.role || 'user', content: lastUser.content, meta });
-        if (t.output?.content || t.output?.tool_calls || t.output?.toolCalls) {
-          const tc = t.output?.tool_calls || t.output?.toolCalls || undefined;
-          // Assistant message
-          if (t.output?.content) {
-            turns.push({ role: t.output.role || 'assistant', content: t.output.content, meta });
-          }
-          // Inline tool calls between assistant and next messages
-          const toolTurns = normalizeToolCalls(tc, meta);
-          for (const tt of toolTurns) turns.push(tt);
-        }
-        continue;
-      }
+    // Build a set of known user inputs from this trace
+    const inMsgs = Array.isArray(t.input?.messages) ? t.input.messages : [];
+    const userInputs = new Set(inMsgs.map((m) => pickContent(m)).filter(Boolean));
 
-      // Case 2: LangGraph style: input.messages[], output.messages[]
-      const inMsgs = t.input?.messages;
-      const outMsgs = t.output?.messages;
-      if (Array.isArray(inMsgs) || Array.isArray(outMsgs)) {
-        const lastUser = Array.isArray(inMsgs) && inMsgs.length ? inMsgs[inMsgs.length - 1] : null;
-        if (lastUser?.content) turns.push({ role: 'user', content: pickContent(lastUser), meta });
-
-        // Take only the last assistant answer to avoid giant repeats
-        const lastAssistant = Array.isArray(outMsgs) && outMsgs.length ? outMsgs[outMsgs.length - 1] : null;
-        if (lastAssistant?.content || lastAssistant?.tool_calls || lastAssistant?.toolCalls || lastAssistant?.lc_kwargs?.tool_calls) {
-          const usage = lastAssistant?.usage_metadata || lastAssistant?.lc_kwargs?.usage_metadata || t.metadata?.usage;
-          // Assistant message first
-          if (lastAssistant?.content) turns.push({ role: 'assistant', content: pickContent(lastAssistant), usage, meta });
-        }
-
-        // Collect all tool calls present anywhere in outMsgs and add unseen ones inline
-        if (Array.isArray(outMsgs)) {
-          const allToolCalls = [];
-          for (const m of outMsgs) {
-            const toolCalls = extractToolCalls(m);
-            if (toolCalls?.length) allToolCalls.push(...toolCalls);
-          }
-          const toolTurns = normalizeToolCalls(allToolCalls, meta, seenToolCalls);
-          for (const tt of toolTurns) turns.push(tt);
-
-          // Also render explicit tool role messages as results if unseen
-          for (const m of outMsgs) {
-            if (m?.role === 'tool' && m?.content) {
-              const key = m.id || JSON.stringify({ c: m.content, n: m.name });
-              if (seenToolMsgs.has(key)) continue;
-              seenToolMsgs.add(key);
-              turns.push({ role: 'tool', content: pickContent(m), toolCall: { name: m.name || 'tool_result' }, meta });
-            }
-          }
-        }
-        continue;
-      }
-
-      // Fallback: try generic input/output strings
-      const inputStr = typeof t.input === 'string' ? t.input : undefined;
-      if (inputStr) turns.push({ role: 'user', content: inputStr, meta });
-      const outputStr = typeof t.output === 'string' ? t.output : undefined;
-      if (outputStr) turns.push({ role: 'assistant', content: outputStr, meta });
+    function messageKey(m, fallbackRole) {
+      const role = m?.role || fallbackRole || 'assistant';
+      const content = typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content || '');
+      return `${role}:${hashString(normalizeText(content))}`;
     }
 
-    // Compact repeated adjacent content from same role (common with frameworks)
+    function pushTurn(turn, key) {
+      if (key && seenMessages.has(key)) return;
+      if (key) seenMessages.add(key);
+      turns.push(turn);
+    }
+
+    function hashString(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; } return h.toString(36); }
+
+    // Iterate output messages in order
+    const outMsgs = Array.isArray(t.output?.messages) ? t.output.messages : [];
+    for (const m of outMsgs) {
+      if (!m) continue;
+      const content = pickContent(m);
+      const toolCalls = extractToolCalls(m);
+
+      // Tool result messages
+      if (m.role === 'tool' || m.tool_call_id || m.lc_direct_tool_output) {
+        const key = messageKey({ role: 'tool', content }, 'tool');
+        pushTurn({ role: 'tool', content, toolCall: { name: m.name || 'tool_result' }, meta }, key);
+        continue;
+      }
+
+      // Assistant message that emits tool calls (content may be empty)
+      if (toolCalls && toolCalls.length) {
+        const key = messageKey({ role: 'assistant', content: content || '[tool calls]' }, 'assistant');
+        if (content) pushTurn({ role: 'assistant', content, meta }, key);
+        const toolTurns = normalizeToolCalls(toolCalls, meta, seenToolCalls);
+        for (const tt of toolTurns) turns.push(tt);
+        continue;
+      }
+
+      // Regular user or assistant message
+      if (content) {
+        const role = userInputs.has(content) ? 'user' : 'assistant';
+        const key = messageKey({ role, content }, role);
+        pushTurn({ role, content, meta }, key);
+        continue;
+      }
+    }
+
+    // Also show any remaining top-level tool calls (rare), keeping de-dupe via normalizeToolCalls
+    if (Array.isArray(t.output?.tool_calls) && t.output.tool_calls.length) {
+      const extra = normalizeToolCalls(t.output.tool_calls, meta, seenToolCalls);
+      for (const tt of extra) turns.push(tt);
+    }
+
+    // Compact adjacent identical bubbles
     const compact = [];
     for (const m of turns) {
       const prev = compact[compact.length - 1];
@@ -155,6 +151,17 @@
     }
     return compact;
   }
+
+  function normalizeText(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/\r\n/g, '\n')
+      .replace(/[\t ]+/g, ' ')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n\s+/g, '\n')
+      .trim();
+  }
+
 
   function normalizeToolCalls(toolCalls, meta, seen = new Set()) {
     const out = [];
@@ -219,7 +226,22 @@
 
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-      bubble.textContent = t.content;
+      const maybeJson = parseJsonIfLikely(t.content);
+      if (maybeJson) {
+        bubble.textContent = 'JSON payload';
+        const det = document.createElement('details');
+        det.className = 'tools';
+        const sum = document.createElement('summary');
+        sum.textContent = 'View JSON';
+        const pre = document.createElement('pre');
+        pre.className = 'code';
+        pre.textContent = JSON.stringify(maybeJson, null, 2);
+        det.appendChild(sum);
+        det.appendChild(pre);
+        bubble.appendChild(det);
+      } else {
+        bubble.textContent = t.content;
+      }
 
       wrap.appendChild(meta);
       wrap.appendChild(bubble);
@@ -258,4 +280,11 @@
 
   // Initial load
   load();
+  
+  function parseJsonIfLikely(text) {
+    const s = String(text || '').trim();
+    if (!s) return null;
+    if (!(s.startsWith('{') || s.startsWith('['))) return null;
+    try { return JSON.parse(s); } catch { return null; }
+  }
 })();
