@@ -47,9 +47,6 @@ footer { border-top: 1px solid var(--border); padding: 8px 16px; color: var(--mu
   .details { border-left: none; border-top: 1px solid var(--border); }
 }
 
-/* Focus layout toggles */
-body.focus-chat main { grid-template-columns: 0 1fr; }
-body.focus-chat .list { display: none; }
 
 /* Chat viewer */
 .details-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

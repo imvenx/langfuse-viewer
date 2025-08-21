@@ -10,7 +10,6 @@
   const loadBtn = qs('#load');
   const prevBtn = qs('#prev');
   const nextBtn = qs('#next');
-  const toggleLayoutBtn = qs('#toggle-layout');
 
   let state = { page: 1, limit: 50, totalPages: 1 };
 
@@ -256,11 +255,6 @@
   prevBtn.onclick = () => { if (state.page > 1) { setState({ page: state.page - 1 }); load(); } };
   nextBtn.onclick = () => { if (state.page < state.totalPages) { setState({ page: state.page + 1 }); load(); } };
 
-  // Toggle focus layout
-  toggleLayoutBtn.onclick = () => {
-    const focused = document.body.classList.toggle('focus-chat');
-    toggleLayoutBtn.textContent = focused ? 'Show List' : 'Focus Chat';
-  };
 
   // Initial load
   load();
